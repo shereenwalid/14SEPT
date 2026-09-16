@@ -4,9 +4,10 @@ Hey team — quick recap of the solution we agreed on for (1) the waterfall char
 - We'll use ADK's built-in code executor tool.
 - KPIs get written to a temp table in BigQuery.
 - The agent writes a Python function to build the plot and runs it inside the sandboxed executor.
-- Once the image is generated, we have two delivery options:
-  - Stream the image bytes from backend to frontend directly, or
-  - Write the image to a centralized GCS bucket and have the UI retrieve it from there.
+- Once the image is generated, we have two delivery options, with a tradeoff between them:
+  - **Byte streaming (backend → frontend directly):** simpler, no extra storage step, but the image isn't persisted — each new plot overwrites/replaces the previous one in transit, so there's no history to go back to.
+  - **GCS (centralized bucket):** adds a small write/retrieval step, but the image is persisted — we keep a durable copy, can retrieve past plots, and the UI just pulls from a stable location instead of depending on an active stream.
+  - Leaning toward GCS for that persistence, but flagging both here since it affects how much plot history we can support later.
 
 **2. Time filtering — avoiding agent latency**
 - Goal: avoid re-running the full agent (and eating that latency) every time a user changes the date range.
