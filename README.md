@@ -1,16 +1,30 @@
-This turn: **`utils/bq_tokens.py`** only — the column names in the MERGE statement and the query parameter.
+**One file: `agent_api.py`.**
 
-Across the whole token-reporting feature, four files:
+Everything you listed happens in the backend, and the timing hooks all sit in that file:
 
-- **`utils/bq_tokens.py`** — new file, the BigQuery MERGE writer
-- **`utils/gemini_client.py`** — capture token usage from every parsing call (`TOKEN_USAGE`, `record_usage`, `get_usage`)
-- **`pipeline.py`** — `_report_daily_tokens()`, called at the end of each run, combining parsing and validation usage
-- **`utils/config_loader.py`** — new `TokensConfig` dataclass
-- **`config.yaml`** — the `tokens:` section with the BSP dataset
+| Step you want timed | Where it lives in `agent_api.py` |
+|---|---|
+| Opportunity ID validation (existence check) | `/exists` endpoint |
+| Processing — total | `/process` endpoint (already timed via `METRICS`) |
+| VBOP retrieval (retrieval agent) | the ADK event loop — agent transitions |
+| Product Code Navigator | same event loop |
+| BSP extraction | same event loop |
+| Email drafter | same event loop |
 
-Five, counting config. `utils/validation_step.py` already had the per-opportunity `METRICS` from earlier, so it didn't need changing — `pipeline.py` just reads it.
+The per-agent sub-steps come free because the event loop already detects when each agent starts and finishes — that's what drives the progress bar. I'd add a timestamp at each transition and compute the deltas.
 
+One thing worth flagging: **`/exists` and `/process` are two separate HTTP calls**, so the backend can't measure the gap between them (the user reading the alert, clicking again, etc.). Two options:
 
+- **Backend-only** — you get each step timed plus total processing time, but "time from clicking the button to seeing results" excludes network and UI rendering. Single file, simplest.
+- **Backend + a line in `app.py`** — the UI stamps the moment the button is clicked and sends it, so you get true end-to-end wall-clock as the user experiences it.
+
+If you want the true user-perceived time, it's `agent_api.py` **plus one small addition to `app.py`**. If backend-only is enough, it's just `agent_api.py`.
+
+Which do you want? And I can write it either way — say the word and I'll add the timestamps with a per-run breakdown line like:
+
+```
+[perf] opp=OPP-... | exists 0.8s | retrieval 12.4s | product_code 31.8s | extraction 24.1s | email 6.7s | total 75.1s
+```
 ---------------
 
 Yes — you can test entirely with curl, no code change. And your mention of the frontend adding an `auth_token` header changes the picture, so let me cover both.
